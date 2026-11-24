@@ -1,245 +1,359 @@
-# 🔐 Aluno Online - API RESTful com Spring Security
+# 🔐 Aluno Online – API REST com Spring Boot e JWT
 
-Evolução da API **Aluno Online**, desenvolvida em Java com Spring Boot para o gerenciamento acadêmico (alunos, professores, disciplinas e matrículas). Nesta etapa, a API recebeu uma camada de **segurança com Spring Security e JSON Web Token (JWT)**: agora só usuários autenticados conseguem acessar os recursos da aplicação.
+## 📌 Sobre o Projeto
+
+O **Aluno Online** é uma API REST desenvolvida em Java utilizando Spring Boot, com o objetivo de realizar o gerenciamento de informações acadêmicas, como alunos, professores, disciplinas e matrículas.
+
+Nesta versão, foi implementado um sistema de segurança utilizando **Spring Security e JWT (JSON Web Token)**, permitindo controlar o acesso às funcionalidades da aplicação por meio de autenticação de usuários.
+
+## 🎯 Objetivos e Funcionalidades
+
+Inicialmente, a API permitia que qualquer pessoa acessasse suas rotas e realizasse operações nos dados cadastrados. Com a implementação do sistema de segurança, o acesso passou a ser controlado.
+
+As principais funcionalidades adicionadas foram:
+
+- **Login:** permite que o usuário entre no sistema utilizando login e senha, recebendo um token JWT.
+- **Proteção das rotas:** as requisições precisam apresentar um token válido no cabeçalho Authorization.
+- **Criptografia de senhas:** utilização do BCrypt para armazenar senhas de forma protegida no banco de dados.
+- **Registro de usuários:** criação de novos usuários por meio de uma rota pública.
+- **Swagger:** documentação das rotas da API, permitindo visualizar e testar as funcionalidades diretamente pelo navegador.
+
+A aplicação utiliza o modelo **STATELESS**, ou seja, não mantém sessões dos usuários no servidor. A autenticação é realizada através do token enviado em cada requisição.
+
+As funcionalidades anteriores de gerenciamento acadêmico foram preservadas, incluindo cadastro de alunos, professores, disciplinas, matrículas, cálculo de médias e trancamento de matrículas.
 
 ---
 
-## 📖 Explicação do Projeto
+## 🏗️ Organização da Aplicação
 
-Até a versão anterior, a API **Aluno Online** era pública: qualquer pessoa que soubesse o endereço conseguia cadastrar, listar, alterar e apagar dados. O objetivo desta etapa foi aplicar o **Spring Security**, seguindo as aulas da disciplina **Tecnologias para Back-End** (Prof. Junio Figueirêdo), para implementar:
+O projeto utiliza a arquitetura em camadas (*Layered Architecture*), separando as responsabilidades de cada parte do sistema.
 
-- **Autenticação:** o usuário faz login com `login` e `senha` e recebe um **token JWT**.
-- **Autorização:** todas as rotas da API exigem esse token no cabeçalho `Authorization: Bearer <token>`. Sem token, ou com um token inválido ou expirado, a requisição é bloqueada.
-- **Senhas seguras:** as senhas ficam salvas no banco com **hash BCrypt**, nunca em texto puro.
-- **Cadastro de usuários:** uma rota pública para criar novos usuários, com validação dos campos e tratamento de erros.
-- **Documentação com Swagger:** a API é documentada automaticamente pelo SpringDoc. Na página do Swagger é possível cadastrar, fazer login, informar o token no botão **Authorize** e testar as rotas protegidas, que aparecem com um **cadeado**.
+As principais camadas são:
 
-A API é **STATELESS**: o servidor não guarda sessão. Cada requisição traz o token, e o próprio token diz quem é o usuário.
+1. **Model:** contém as entidades que representam os dados armazenados no banco. A entidade Usuario também implementa UserDetails, permitindo sua integração com o Spring Security.
+2. **Repository:** responsável pela comunicação com o banco de dados através do Spring Data JPA. Também possui o método findByLogin para localizar usuários.
+3. **Service:** concentra as regras de negócio e os processos de autenticação. A classe AutenticacaoService implementa UserDetailsService.
+4. **Controller:** recebe as requisições HTTP e disponibiliza os endpoints da API. Foram adicionados os controllers de autenticação e cadastro de usuários.
+5. **Infra:** reúne as configurações de segurança, filtros de autenticação, geração de tokens e tratamento de erros.
 
-Todo o domínio original (alunos, professores, disciplinas, matrículas, cálculo de média e trancamento) **foi mantido sem alterações de regra**. A segurança foi adicionada em classes novas. Nos controllers existentes, a única mudança foi a anotação `@SecurityRequirement`, que só afeta a documentação do Swagger.
+### 🔑 Processo de autenticação
 
----
+Quando o usuário realiza o login, o sistema verifica suas informações no banco de dados e compara a senha utilizando BCrypt.
 
-## ⚙️ Descrição da Arquitetura Utilizada
-
-A aplicação continua seguindo a **Arquitetura em Camadas** (Layered Architecture), agora com uma camada de **infraestrutura** para a segurança:
-
-1. **Model (Entidades):** representação das tabelas no banco de dados. A nova entidade `Usuario` implementa a interface `UserDetails` do Spring Security, informando qual atributo é o usuário (`login`), qual é a senha (`senha`) e quais são os perfis (`ROLE_USER`).
-2. **Repository (Persistência):** interfaces do Spring Data JPA. O novo `UsuarioRepository` tem o método `findByLogin`, usado no login e na validação do token.
-3. **Service (Regra de Negócio):** o novo `AutenticacaoService` implementa `UserDetailsService`. O Spring Security o chama automaticamente no login para buscar o usuário no banco.
-4. **Controller (Endpoints):** a porta de entrada da API. Novos controllers: `AutenticacaoController` (`POST /login`) e `UsuarioController` (`POST /cadastros`).
-5. **Infra (Segurança e Erros):** pacote novo que concentra a configuração do Spring Security, o filtro de requisições, a geração e validação do token e o tratamento de erros de validação.
-
-### 🔄 Fluxo de autenticação (login)
+Após a validação, é gerado um token JWT que será utilizado nas próximas requisições.
 
 ```text
-POST /login  { "login": "...", "senha": "..." }
-   │
-   ▼
-AutenticacaoController ──► AuthenticationManager ──► AutenticacaoService.loadUserByUsername()
-   │                                                     │
-   │                                                     ▼
-   │                                       UsuarioRepository.findByLogin()  →  banco (tabela usuarios)
-   │                                                     │
-   │                              PasswordEncoder (BCrypt) confere a senha
-   ▼
-TokenService.gerarToken()  ──►  200 OK  { "token": "eyJ..." }
+POST /login
+       |
+       v
+AutenticacaoController
+       |
+       v
+AuthenticationManager
+       |
+       v
+AutenticacaoService
+       |
+       v
+UsuarioRepository
+       |
+       v
+Verificação da senha com BCrypt
+       |
+       v
+TokenService
+       |
+       v
+Retorno do token JWT
 ```
 
-### 🛡️ Fluxo de autorização (demais requisições)
+### 🛡️ Controle de acesso
+
+Nas demais operações, o sistema verifica se o usuário possui um token válido.
 
 ```text
-GET /alunos   Authorization: Bearer eyJ...
-   │
-   ▼
-SecurityFilter (roda antes do filtro padrão do Spring)
-   ├─ recuperarToken()          → lê o cabeçalho Authorization e tira o "Bearer "
-   ├─ TokenService.getSubject() → valida assinatura, emissor e expiração e devolve o login
-   ├─ UsuarioRepository.findByLogin()
-   └─ SecurityContextHolder     → marca o usuário como autenticado
-   │
-   ▼
-SecurityConfigurations: /login e /cadastros liberados; todo o resto exige autenticação
-   │
-   ├─ autenticado      → Controller → 200 / 201 / 204
-   └─ não autenticado  → 403 Forbidden
+Requisição HTTP
+       |
+       v
+SecurityFilter
+       |
+       v
+Leitura do token JWT
+       |
+       v
+Validação do token
+       |
+       v
+Identificação do usuário
+       |
+       v
+Verificação de autenticação
+       |
+       v
+Acesso permitido ou bloqueado
 ```
+
+As rotas de login e cadastro permanecem públicas. As demais funcionalidades precisam de autenticação.
 
 ---
 
-## 📂 Detalhamento do Código e Evolução
+## 📁 Estrutura dos Pacotes
 
-A organização dos pacotes reflete a arquitetura. Os arquivos marcados com ⭐ são os novos desta etapa:
+A organização do código está dividida da seguinte maneira:
 
 ```text
 src/main/java/br/com/alunoonline/api/
- ├── controller/
- │    ├── AlunoController, ProfessorController, DisciplinaController, MatriculaAlunoController
- │    ├── ⭐ AutenticacaoController      # POST /login: autentica e devolve o token JWT
- │    └── ⭐ UsuarioController           # POST /cadastros: cadastra usuário com senha em BCrypt
- ├── dtos/
- │    ├── AtualizarNotasRequestDTO
- │    ├── ⭐ DadosAutenticacao           # login e senha recebidos no /login
- │    ├── ⭐ DadosCadastroUsuario        # login e senha com @NotBlank
- │    └── ⭐ DadosDetalhamentoUsuario    # resposta do cadastro (id e login, sem a senha)
- ├── infra/
- │    ├── ⭐ exception/TratadorDeErros   # @RestControllerAdvice: erros de validação viram 400
- │    ├── ⭐ springdoc/SpringDocConfigurations  # Swagger: esquema "bearer-key" (botão Authorize)
- │    └── ⭐ security/
- │         ├── SecurityConfigurations  # CSRF off, STATELESS, regras de acesso, BCrypt, AuthenticationManager
- │         ├── SecurityFilter          # filtro que valida o token em toda requisição
- │         ├── TokenService            # gera e valida o token JWT (HMAC256, expira em 2h)
- │         └── DadosTokenJWT           # resposta do login: { "token": "..." }
- ├── model/
- │    ├── Aluno, Professor, Disciplina, MatriculaAluno
- │    └── ⭐ Usuario                     # entidade da tabela usuarios, implementa UserDetails
- ├── repository/
- │    ├── AlunoRepository, ProfessorRepository, DisciplinaRepository, MatriculaAlunoRepository
- │    └── ⭐ UsuarioRepository           # findByLogin
- └── service/
-      ├── AlunoService, ProfessorService, DisciplinaService, MatriculaAlunoService
-      └── ⭐ AutenticacaoService         # implementa UserDetailsService
+│
+├── controller/
+│   ├── AlunoController
+│   ├── ProfessorController
+│   ├── DisciplinaController
+│   ├── MatriculaAlunoController
+│   ├── AutenticacaoController
+│   └── UsuarioController
+│
+├── dtos/
+│   ├── AtualizarNotasRequestDTO
+│   ├── DadosAutenticacao
+│   ├── DadosCadastroUsuario
+│   └── DadosDetalhamentoUsuario
+│
+├── infra/
+│   ├── exception/
+│   │   └── TratadorDeErros
+│   ├── springdoc/
+│   │   └── SpringDocConfigurations
+│   └── security/
+│       ├── SecurityConfigurations
+│       ├── SecurityFilter
+│       ├── TokenService
+│       └── DadosTokenJWT
+│
+├── model/
+│   ├── Aluno
+│   ├── Professor
+│   ├── Disciplina
+│   ├── MatriculaAluno
+│   └── Usuario
+│
+├── repository/
+│   ├── AlunoRepository
+│   ├── ProfessorRepository
+│   ├── DisciplinaRepository
+│   ├── MatriculaAlunoRepository
+│   └── UsuarioRepository
+│
+└── service/
+    ├── AlunoService
+    ├── ProfessorService
+    ├── DisciplinaService
+    ├── MatriculaAlunoService
+    └── AutenticacaoService
 ```
 
-🛣️ Principais Rotas e Funcionalidades Implementadas:
+---
 
-**Rotas públicas (não precisam de token):**
+## 🚀 Endpoints Disponíveis
 
-POST /login: recebe `{ "login": "...", "senha": "..." }` e devolve `{ "token": "..." }`. Com a senha errada, devolve 403.
+### Rotas públicas
 
-POST /cadastros: cadastra um novo usuário. A senha é salva com hash BCrypt. Campos vazios devolvem 400 com a lista de erros, e um login repetido devolve 400 "Login já Cadastrado!!!!".
+Não precisam de autenticação.
 
-**Rotas protegidas (precisam do cabeçalho `Authorization: Bearer <token>`):**
+| Método | Endpoint | Descrição |
+|---|---|---|
+| POST | `/login` | Realiza o login e retorna o token JWT. |
+| POST | `/cadastros` | Registra um novo usuário. |
 
-Cadastros Básicos (Alunos, Professores e Disciplinas):
+### Rotas protegidas
 
-POST: criação de novos registros (/alunos, /professores, /disciplinas).
+Precisam de um token JWT válido no cabeçalho:
 
-GET: listagem geral e busca por ID de todos os cadastros.
+`Authorization: Bearer <token>`
 
-PUT: atualização completa de cadastros existentes.
+**Gerenciamento acadêmico:**
 
-DELETE: remoção de registros do banco de dados.
+| Método | Endpoint | Funcionalidade |
+|---|---|---|
+| POST | `/alunos` | Cadastrar aluno |
+| GET | `/alunos` | Listar alunos |
+| PUT | `/alunos` | Atualizar aluno |
+| DELETE | `/alunos` | Excluir aluno |
+| POST | `/professores` | Cadastrar professor |
+| GET | `/professores` | Consultar professores |
+| POST | `/disciplinas` | Cadastrar disciplina |
+| GET | `/disciplinas` | Consultar disciplinas |
 
-Gestão de Matrículas e Notas (Regras de Negócio):
+**Matrículas e notas:**
 
-POST /matriculas: realiza a matrícula de um aluno em uma disciplina (iniciando com status "MATRICULADO").
+| Método | Endpoint | Funcionalidade |
+|---|---|---|
+| POST | `/matriculas` | Realizar matrícula |
+| PATCH | `/matriculas/atualizar-notas/{id}` | Registrar notas e calcular média |
+| PATCH | `/matriculas/trancar/{id}` | Alterar matrícula para trancada |
 
-PATCH /matriculas/atualizar-notas/{id}: lança a Nota 1 e a Nota 2. O sistema calcula a média automaticamente e define o status como "APROVADO" ou "REPROVADO".
+O sistema também possui operações de atualização e exclusão para os demais cadastros.
 
-PATCH /matriculas/trancar/{id}: altera o status da matrícula para "TRANCADO".
+Quando uma matrícula recebe as duas notas, a aplicação calcula automaticamente a média e define a situação do aluno como aprovado ou reprovado.
 
-Sem token, com token alterado ou com token expirado, todas essas rotas devolvem **403 Forbidden**.
+Requisições sem autenticação ou com tokens inválidos e expirados são bloqueadas.
 
-🛠️ Tecnologias Utilizadas
-Java 21
+---
 
-Spring Boot 4 (Web, Data JPA, Validation)
+## 💻 Tecnologias e Ferramentas
 
-Spring Security 7 (autenticação, autorização e BCrypt)
+As seguintes tecnologias foram utilizadas durante o desenvolvimento:
 
-Auth0 java-jwt 4.5.1 (geração e validação dos tokens JWT)
+- **Java 21:** linguagem utilizada na construção da aplicação.
+- **Spring Boot 4:** estrutura principal para desenvolvimento da API.
+- **Spring Web:** criação dos endpoints REST.
+- **Spring Data JPA:** integração com o banco de dados.
+- **Spring Security 7:** controle de autenticação e autorização.
+- **JWT (Auth0 java-jwt 4.5.1):** criação e validação dos tokens.
+- **PostgreSQL:** banco de dados utilizado para armazenar as informações.
+- **Lombok:** redução de códigos repetitivos.
+- **Maven:** gerenciamento das dependências.
+- **SpringDoc OpenAPI 3.0.3 / Swagger UI:** documentação e testes das requisições.
+- **DBeaver:** ferramenta utilizada para visualizar e administrar o banco de dados.
 
-PostgreSQL (Banco de dados relacional)
+---
 
-Lombok (Redução de boilerplate de código)
+## ⚙️ Como Executar o Projeto
 
-Maven (Gerenciamento de dependências)
+Para executar a aplicação localmente, siga as etapas:
 
-SpringDoc OpenAPI 3.0.3 / Swagger UI (Documentação e teste das rotas pelo navegador)
+**1. Preparar o banco de dados**
 
-DBeaver (Visualização do banco de dados)
+Tenha o PostgreSQL instalado e crie um banco de dados para a aplicação.
 
-## ▶️ Como Executar
+As tabelas são geradas automaticamente pelo Hibernate.
 
-1. Crie o banco `aluno_online` no PostgreSQL (as tabelas são criadas automaticamente pelo Hibernate).
-2. Configure as variáveis de ambiente (por exemplo, nas *Environment variables* da configuração de execução do IntelliJ):
+**2. Configurar as variáveis de ambiente**
 
-   | Variável | Obrigatória | Padrão |
-   |---|---|---|
-   | `DB_PASSWORD` | sim | — |
-   | `DB_USERNAME` | não | `postgres` |
-   | `DB_URL` | não | `jdbc:postgresql://localhost:5432/aluno_online` |
-   | `JWT_SECRET` | não | `12345678` (só para desenvolvimento) |
+Configure as seguintes variáveis na execução do projeto:
 
-3. Rode a aplicação (`AlunoOnlineApplication`). Ela sobe em `http://localhost:8080`, e a documentação fica em **`http://localhost:8080/swagger-ui/index.html`** (aberta, sem login).
-4. Crie um usuário em `POST /cadastros`, faça login em `POST /login` e use o token devolvido como **Bearer Token** nas demais rotas (veja o passo a passo abaixo).
+| Variável | Finalidade |
+|---|---|
+| `DB_URL` | Endereço de conexão com o banco |
+| `DB_USERNAME` | Usuário do PostgreSQL |
+| `DB_PASSWORD` | Senha do banco de dados |
+| `JWT_SECRET` | Chave utilizada para gerar os tokens |
 
-## 🔑 Primeiro Acesso
+**3. Iniciar a aplicação**
 
-⚠️ **Ao rodar o projeto em um banco novo, não existe nenhum usuário cadastrado.** O cadastro de usuários é **público** (não precisa de token nem de outra conta), então qualquer pessoa consegue criar o próprio acesso:
+Execute a classe principal:
 
-**1. Cadastre um usuário (sem token):**
+`AlunoOnlineApplication`
 
-```http
-POST http://localhost:8080/cadastros
-Content-Type: application/json
+Por padrão, a API ficará disponível em:
 
+`http://localhost:8080`
+
+**4. Acessar a documentação**
+
+A documentação Swagger pode ser acessada pelo endereço:
+
+`http://localhost:8080/swagger-ui/index.html`
+
+---
+
+## 🔐 Primeiro Acesso ao Sistema
+
+Quando a aplicação é executada em um banco de dados novo, ainda não existe nenhum usuário cadastrado.
+
+Por isso, é necessário criar uma conta antes de utilizar as demais funcionalidades.
+
+### 1. Criar um usuário
+
+Envie uma requisição POST para:
+
+`http://localhost:8080/cadastros`
+
+Exemplo de corpo da requisição:
+
+```json
 {
   "login": "professor@alunoonline.com",
   "senha": "123456"
 }
 ```
 
-Resposta esperada: **201 Created** com `{ "id": 1, "login": "professor@alunoonline.com" }`. A senha é salva no banco com hash BCrypt.
+O sistema realizará o cadastro e armazenará a senha utilizando BCrypt.
 
-**2. Faça login com o mesmo usuário (sem token):**
+### 2. Realizar o login
 
-```http
-POST http://localhost:8080/login
-Content-Type: application/json
+Envie uma requisição POST para:
 
+`http://localhost:8080/login`
+
+Utilize os mesmos dados cadastrados anteriormente.
+
+```json
 {
   "login": "professor@alunoonline.com",
   "senha": "123456"
 }
 ```
 
-Resposta esperada: **200 OK** com `{ "token": "eyJ..." }`.
+Se as informações estiverem corretas, será retornado um token JWT.
 
-**3. Use o token nas demais rotas:**
+### 3. Autorizar as requisições
 
-No **Swagger**, clique em **Authorize**, cole o valor do `token` (sem as aspas) no campo `bearer-key` e clique em **Authorize**. A partir daí, todas as rotas passam a enviar o token.
+No Swagger:
 
-Isso equivale a enviar o cabeçalho:
+1. Clique no botão **Authorize**.
+2. Insira o token recebido no login.
+3. Clique novamente em **Authorize**.
 
-```http
-GET http://localhost:8080/alunos
-Authorization: Bearer eyJ...
-```
+Depois disso, será possível acessar as rotas protegidas.
 
-O token vale por **2 horas**. Depois disso, faça login novamente para gerar outro.
+O token possui validade de **2 horas**. Após esse período, será necessário realizar um novo login.
 
-## 📸 Testes e Demonstração
+---
 
-### 1. Requisições no Swagger
+## 📸 Evidências de Funcionamento
 
-**Página do Swagger, com o botão Authorize e o cadeado nas rotas protegidas:**
-<img width="800" height="600" alt="SwaggerCadeados" src="docs/prints/12-swagger-cadeados.png" />
+### Testes realizados pelo Swagger
 
-**Cadastrando um Usuário pelo Swagger, sem token (POST /cadastros):**
-<img width="800" height="692" alt="SwaggerCadastro" src="docs/prints/13-swagger-cadastro.jpg" />
+**Visualização das rotas protegidas e seus respectivos cadeados:**
 
-**Efetuando Login pelo Swagger (POST /login), devolvendo o Token JWT:**
-<img width="800" height="692" alt="SwaggerLogin" src="docs/prints/14-swagger-login-token.jpg" />
+<img width="800" alt="Swagger Cadeados" src="docs/prints/12-swagger-cadeados.png" />
 
-**Listando Alunos sem Autorizar (GET /alunos), bloqueado com 403:**
-<img width="800" height="692" alt="SwaggerListarSemToken" src="docs/prints/15-swagger-listar-sem-token.jpg" />
+**Cadastro de usuário:**
 
-**Informando o Token no Authorize (esquema bearer-key):**
-<img width="800" height="692" alt="SwaggerAuthorize" src="docs/prints/16-swagger-authorize.jpg" />
+<img width="800" alt="Swagger Cadastro" src="docs/prints/13-swagger-cadastro.jpg" />
 
-**Listando Alunos depois do Authorize (GET /alunos), com o cabeçalho Authorization: Bearer:**
-<img width="800" height="692" alt="SwaggerListarComToken" src="docs/prints/17-swagger-listar-com-token.jpg" />
+**Realização do login e retorno do token JWT:**
 
-### 2. Persistência no DBeaver (PostgreSQL)
+<img width="800" alt="Swagger Login" src="docs/prints/14-swagger-login-token.jpg" />
 
-**Tabela de Usuários, com as senhas salvas em hash BCrypt:**
-<img width="1456" height="782" alt="TabelaBdUsuarios" src="docs/prints/10-dbeaver-tabela-usuarios.jpg" />
+**Tentativa de acessar uma rota sem autenticação:**
 
-**Tabela de Alunos Atualizada Depois dos Testes:**
-<img width="1456" height="782" alt="TabelaBdAluno" src="docs/prints/11-dbeaver-tabela-aluno.jpg" />
+<img width="800" alt="Swagger sem token" src="docs/prints/15-swagger-listar-sem-token.jpg" />
 
-## 👨‍💻 Autor
-Rodolfo Santiago Romero  Garcia
-Ciência da Computação - UNIESP
+**Autorização utilizando o token:**
+
+<img width="800" alt="Swagger Authorize" src="docs/prints/16-swagger-authorize.jpg" />
+
+**Acesso à rota após a autenticação:**
+
+<img width="800" alt="Swagger com token" src="docs/prints/17-swagger-listar-com-token.jpg" />
+
+### Verificação dos dados no PostgreSQL
+
+**Tabela de usuários com senhas protegidas por BCrypt:**
+
+<img width="800" alt="Tabela de usuários" src="docs/prints/10-dbeaver-tabela-usuarios.jpg" />
+
+**Tabela de alunos após os testes realizados:**
+
+<img width="800" alt="Tabela de alunos" src="docs/prints/11-dbeaver-tabela-aluno.jpg" />
+
+---
+
+## 👨‍💻 Desenvolvedor
+
+**Caio Graciano Nóbrega**
+
+Ciência da Computação – UNIESP
+
+Projeto desenvolvido como parte das atividades acadêmicas da disciplina Tecnologias para Back-End.
